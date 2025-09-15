@@ -18,7 +18,6 @@ import json
 from collections import defaultdict
 from time import perf_counter
 
-import networkx as nx
 
 def evaluate_metrics_ep(component, workers, worker_names, assignments, evicted_tokens=None, worker_bind='mod'):
     """
@@ -36,6 +35,7 @@ def evaluate_metrics_ep(component, workers, worker_names, assignments, evicted_t
 
     # 最短路缓存
     sp_cache = {}
+
     def sp(u, v):
         key = (u, v)
         if key in sp_cache:
@@ -50,7 +50,7 @@ def evaluate_metrics_ep(component, workers, worker_names, assignments, evicted_t
     # 计算 worker→PS 最短路 与 worker→X 最短路 的“公共前缀”边数
     def common_prefix_hops(worker, x):
         p_w_ps = sp(worker, component.ps)
-        p_w_x  = sp(worker, x)
+        p_w_x = sp(worker, x)
         if not p_w_ps or not p_w_x:
             return 0
         i = 0
@@ -69,7 +69,7 @@ def evaluate_metrics_ep(component, workers, worker_names, assignments, evicted_t
         return worker_names[idx]
 
     # (1) worker -> (switch|PS)
-    A = defaultdict(int)   # (s,t) -> 收到的 expert 段计数
+    A = defaultdict(int)  # (s,t) -> 收到的 expert 段计数
     A_onpath_count = defaultdict(int)  # (s,t) -> “在最短路上”的贡献计数（≥1 视为在最短路上）
     direct_ps_cnt = 0
     total_comm = 0
@@ -153,8 +153,8 @@ def evaluate_metrics_ep(component, workers, worker_names, assignments, evicted_t
     return {
         'agg_overhead': ps_agg_bytes,
         'in_network_bytes': in_net_worker_to_switch_bytes,  # 发生量（不乘跳数）
-        'in_network_saved': in_net_saved_bytes,             # 节省量
-        'comm_overhead': total_comm,                        # 仅最短路/公共前缀
+        'in_network_saved': in_net_saved_bytes,  # 节省量
+        'comm_overhead': total_comm,  # 仅最短路/公共前缀
         'fallback_rate': fallback_rate
     }
 
@@ -227,15 +227,16 @@ class LightweightTopo:
 # =============================================================
 # 拓扑：轻量级 Leaf-Spine
 # =============================================================
+LS_num = 17
 class LeafSpineTopoLight(LightweightTopo):
     """构建 16×16 的 leaf-spine 结构，每个 leaf 连接 16 台主机。"""
 
     def __init__(self):
         super().__init__()
-        spines = [self.addSwitch(f'spine{i}') for i in range(1, 17)]
+        spines = [self.addSwitch(f'spine{i}') for i in range(1, LS_num)]
         leaves = []
 
-        for i in range(1, 17):
+        for i in range(1, LS_num):
             leaf = self.addSwitch(f'leaf{i}')
             leaves.append(leaf)
 
@@ -244,7 +245,7 @@ class LeafSpineTopoLight(LightweightTopo):
                 self.addLink(spine, leaf)
 
             # leaf 下挂 10 台主机
-            for j in range(1, 17):
+            for j in range(1, LS_num):
                 host = self.addHost(f'h{i}_{j}')
                 self.addLink(host, leaf)
 
@@ -253,6 +254,7 @@ class LeafSpineTopoLight(LightweightTopo):
         # self.addLink(ps, spines[0])  # PS连到第一个 spine
         for spine in spines:
             self.addLink(ps, spine)
+
 
 # =============================================================
 # 拓扑：轻量级 Fat-Tree
@@ -777,14 +779,14 @@ class DSA_MoE:
 
         # —— 先建所有容量/数据结构（_get_programmable_switches 里会用到）——
         self.SEGMENT_SIZE = int(self.moe_config.expert_output_size_mb * 1024 * 1024)
-        self.switch_capacity = {}                                   # sw -> 槽位上限
-        self.switch_used_slots = defaultdict(int)                   # sw -> 已用槽位
+        self.switch_capacity = {}  # sw -> 槽位上限
+        self.switch_used_slots = defaultdict(int)  # sw -> 已用槽位
         self.switch_token_counts = defaultdict(lambda: defaultdict(int))  # sw -> token -> 已累加片段数
-        self.switch_heap = {}                                       # sw -> [(priority, token), ...] 最小堆
-        self.switch_slot_prio = defaultdict(dict)                   # sw -> token -> priority
+        self.switch_heap = {}  # sw -> [(priority, token), ...] 最小堆
+        self.switch_slot_prio = defaultdict(dict)  # sw -> token -> priority
         self._spath_cache = {}
         self.token_assignments = defaultdict(lambda: defaultdict(str))
-        self._evicted_tokens = defaultdict(set)                     # sw -> {token}：统计被逐出的 token（用于 switch->PS 计费）
+        self._evicted_tokens = defaultdict(set)  # sw -> {token}：统计被逐出的 token（用于 switch->PS 计费）
 
         # —— 最后再探测可编程交换机（初始化容量 & 堆）——
         self.prog_sw = self._get_programmable_switches()
@@ -856,9 +858,12 @@ class DSA_MoE:
             progress_ratio = token_id / total_tokens
             remaining_time = max(10, 100 * (1 - progress_ratio))
         if comm_comp_ratio is None:
-            if expert_id < 134: comm_comp_ratio = 2.0
-            elif expert_id < 192: comm_comp_ratio = 1.0
-            else: comm_comp_ratio = 0.5
+            if expert_id < 134:
+                comm_comp_ratio = 2.0
+            elif expert_id < 192:
+                comm_comp_ratio = 1.0
+            else:
+                comm_comp_ratio = 0.5
         num_layers = 2
         priority = (1.0 / remaining_time) * (num_layers / layer_id) * comm_comp_ratio
         return int(min(max(priority * 100, 1), 255))
@@ -908,7 +913,10 @@ class DSA_MoE:
         events.sort(key=lambda x: x['time'])
 
         for ev in events:
-            token = ev['token']; expert = ev['expert_name']; worker = ev['worker']; prio = ev['priority']
+            token = ev['token'];
+            expert = ev['expert_name'];
+            worker = ev['worker'];
+            prio = ev['priority']
             sw = self._first_prog_on_path(worker)
             if sw is None:
                 self.token_assignments[token][expert] = self.ps
@@ -949,9 +957,10 @@ class DSA_MoE:
             workers,
             worker_names,
             self.token_assignments,
-            evicted_tokens=self._evicted_tokens,   # ★ 新增
-            worker_bind='dsa'                      # 与原 DSA 绑定规则一致
+            evicted_tokens=self._evicted_tokens,  # ★ 新增
+            worker_bind='dsa'  # 与原 DSA 绑定规则一致
         )
+
 
 # =============================================================
 # ATP：自适应阈值策略
@@ -974,8 +983,8 @@ class AdaptiveATP:
 
         # 片段大小 & 槽位/占用结构（必须先建好，_get_programmable_switches 要用）
         self.SEGMENT_SIZE = int(self.moe_config.expert_output_size_mb * 1024 * 1024)
-        self.switch_capacity = {}                                  # sw -> 槽位上限
-        self.switch_used_slots = defaultdict(int)                  # sw -> 已用槽位
+        self.switch_capacity = {}  # sw -> 槽位上限
+        self.switch_used_slots = defaultdict(int)  # sw -> 已用槽位
         self.switch_token_counts = defaultdict(lambda: defaultdict(int))  # sw -> token -> 已累加片段数
 
         # 路径缓存 & 分配结果
@@ -1167,7 +1176,7 @@ def run_simulation(topo_type):
             workers = {h: h for h in topo.hosts() if h != 'ps'}
 
             if topo_type == 'leaf':
-                worker_names = [f'h{i}_{j}' for i in range(1, 11) for j in range(1, 11)]
+                worker_names = [f'h{i}_{j}' for i in range(1, LS_num) for j in range(1, LS_num)]
             else:
                 worker_names = [f'h{pod}_{edge}_{host}' for pod in range(8) for edge in range(1, 5) for host in
                                 range(1, 5)]
@@ -1182,8 +1191,10 @@ def run_simulation(topo_type):
             ps_only = PS_Only_MoE(topo, experts, moe_config)
             ps_only_metrics = ps_only.run_ps_only(workers, worker_names, experts, tokens)
             all_results['PS_agg']['PS-only'].append(round(ps_only_metrics['agg_overhead'] / (1024 ** 3), 3))
-            all_results['In_net_bytes']['PS-only'].append( round(ps_only_metrics.get('in_network_bytes', 0) / (1024 ** 3), 3))
-            all_results['In_net_saved']['PS-only'].append( round(ps_only_metrics.get('in_network_saved', 0) / (1024 ** 3), 3))
+            all_results['In_net_bytes']['PS-only'].append(
+                round(ps_only_metrics.get('in_network_bytes', 0) / (1024 ** 3), 3))
+            all_results['In_net_saved']['PS-only'].append(
+                round(ps_only_metrics.get('in_network_saved', 0) / (1024 ** 3), 3))
             all_results['fallback_rate']['PS-only'].append(round(ps_only_metrics['fallback_rate'] * 100, 3))
             all_results['Total_comm']['PS-only'].append(round(ps_only_metrics['comm_overhead'] / (1024 ** 3), 3))
             print(f"[time] PS-only: {perf_counter() - t0:.3f}s")  # ★新增
@@ -1209,7 +1220,6 @@ def run_simulation(topo_type):
             all_results['fallback_rate']['DSA'].append(round(dsa_metrics['fallback_rate'] * 100, 3))
             all_results['Total_comm']['DSA'].append(round(dsa_metrics['comm_overhead'] / (1024 ** 3), 3))
             print(f"[time] DSA   : {perf_counter() - t0:.3f}s")  # ★新增
-
 
             # ATP
             t0 = perf_counter()
